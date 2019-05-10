@@ -1,0 +1,209 @@
+---
+title: "Rap Lyrics Sentiment Analysis"
+author: "Raghava Govil, Nikhil Sharma"
+date: "4/15/2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+library(genius)
+library(tidyverse)
+library(corpus)
+library(tidytext)
+library(scales)
+library(ggthemes)
+library(DT)
+library(tm)
+library(SnowballC)
+library(wordcloud)
+library(RColorBrewer)
+library(RCurl)
+library(XML)
+```
+
+```{r}
+setwd("Users/nikhilsharma//Documents/Denzel_SA")
+```
+
+
+
+```{r}
+nrc <- get_sentiments("nrc")
+get_album_sentiments <- function(artist, album){
+  df <- genius_album(artist = artist, album = album)
+  df <- df[, -c(2:3)]
+  df$lyric_stem <- text_tokens(df$lyric, stemmer = "en")
+  df <- data.frame(track_title = rep(df$track_title, sapply(df$lyric_stem, length)), word = unlist(df$lyric_stem)) 
+  df_sentiment <- merge(df, nrc, by = "word")
+  df_sentiment <- as.data.frame(df_sentiment)
+  return (df_sentiment)
+}
+
+get_album_sentiments_not_lem <- function(artist, album){
+  df <- genius_album(artist = artist, album = album)
+  df <- df[, -c(2:3)]
+  return (df)
+}
+```
+
+```{r}
+albums <- c("Nostalgic 64","32 Zel/Planet Shrooms","Imperial", "13","TA13OO")
+list_albums <- lapply(albums, get_album_sentiments, artist = "Denzel Curry")
+for (i in 1:5) {list_albums[[i]]$album <- albums[i]}
+sent_all_albums <- bind_rows(list_albums)
+
+list_albums_not_lem <- lapply(albums, get_album_sentiments_not_lem, artist = "Denzel Curry")
+for (i in 1:5) {list_albums_not_lem[[i]]$album <- albums[i]}
+sent_all_albums_not_lem <- bind_rows(list_albums_not_lem)
+```
+
+```{r}
+set.seed(123)
+wordcloud(sent_all_albums_not_lem$lyric, type ="text", lang = "english", colors=brewer.pal(8, "Dark2"), max.words = 300)
+```
+
+
+```{r}
+sent_all_albums <- sent_all_albums %>%  arrange(track_title)
+```
+
+```{r}
+sent_all_albums[967:1179,]$track_title <- "CASH MANIAC | CAZH MAN1AC (ft. Nyyjerya)"
+target <- c("anger", "fear")
+cashmoney <- c("cash", "money")
+sent_all_albums <- sent_all_albums %>%  filter(!(track_title=="CASH MANIAC | CAZH MAN1AC (ft. Nyyjerya)" & sentiment %in% target & word %in% cashmoney))
+```
+
+```{r}
+sent_all_albums$facet = factor(sent_all_albums$album, levels = c("Nostalgic 64", "32 Zel/Planet Shrooms", "Imperial", "13", "TA13OO"))
+all_albums_plot <- ggplot(data = sent_all_albums, aes(x = sentiment, y = 1, color = album)) + 
+  geom_bar(stat = "identity", width = 0.675) + 
+  labs(x = "Sentiment", y = "Sentiment Counts") +
+  ggtitle("Sentiment Counts Per Album") +
+  theme(plot.title = element_text(size=20, face="bold"), legend.position = "none") +
+  facet_wrap(~facet, ncol = 1) +
+  scale_x_discrete(labels=c("anger" = "Anger","anticipation" = "Anticipation","disgust" = "Disgust","fear" = "Fear","joy" = "Joy","negative" = "Negative","positive" = "Positive","sadness" = "Sadness","surprise" = "Surprise","trust" = "Trust"))
+all_albums_plot
+```
+
+```{r}
+ggsave(filename="albums.png", plot=all_albums_plot, width=240, height=410, units = "mm")
+```
+
+
+```{r}
+all_song_sentiments <- sent_all_albums %>% group_by(sentiment, track_title, album) %>% summarise(Freq=n()) %>% spread(sentiment, Freq)
+all_song_sentiments[is.na(all_song_sentiments)] <- 0
+write.csv(all_song_sentiments, file="allsongs.csv")
+```
+
+
+
+```{r}
+taboo <- sent_all_albums %>% filter (album == "TA13OO")
+```
+
+```{r}
+taboo_sents <- taboo %>% group_by(sentiment, track_title) %>% summarise(Freq=n()) %>% spread(sentiment, Freq)
+colnames(taboo_sents) <- c("Track Title","Anger","Anticipation","Disgust","Fear","Joy","Negative","Positive","Sadness","Surprise","Trust")
+```
+
+```{r}
+light <- taboo_sents[c(11,1,3,8),]
+```
+
+```{r}
+sums <- as.data.frame(colSums(light[,2:11]))
+colnames(sums)[1] <- "Count"
+sums$Sentiment <- rownames(sums)
+sums <- sums[,2:1]
+```
+
+```{r}
+lg <- ggplot(data = sums, aes(x=Sentiment, y=Count)) + 
+  geom_bar(stat="identity", show.legend=FALSE, fill = "gray70", width = 0.675) + 
+  scale_colour_fivethirtyeight() + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + 
+  ggtitle("Act 1: Light", subtitle = "TA13OO") +
+  xlab("Sentiment") +
+  ylab("Sentiment Counts")+
+  coord_cartesian(ylim=c(0,200))
+lg
+```
+
+```{r}
+grey <- taboo_sents[c(9,10,5,7,4),]
+```
+
+```{r}
+sums2 <- as.data.frame(colSums(grey[,2:11]))
+colnames(sums2)[1] <- "Count"
+sums2$Sentiment <- rownames(sums2)
+sums2 <- sums2[,2:1]
+```
+
+
+```{r}
+gg <- ggplot(data = sums2, aes(x=Sentiment, y=Count)) + 
+  geom_bar(stat="identity", show.legend=FALSE, fill = "gray50", width = 0.675) + 
+  scale_colour_fivethirtyeight() + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + 
+  ggtitle("Act 2: Gray", subtitle = "TA13OO") +
+  xlab("Sentiment") +
+  ylab("Sentiment Counts")+
+  coord_cartesian(ylim=c(0,200))
+gg
+```
+
+```{r}
+dark <- taboo_sents[c(12,6,13,2),]
+```
+
+```{r}
+sums3 <- as.data.frame(colSums(dark[,2:11]))
+colnames(sums3)[1] <- "Count"
+sums3$Sentiment <- rownames(sums3)
+sums3 <- sums3[,2:1]
+```
+
+
+```{r}
+dg <- ggplot(data = sums3, aes(x=Sentiment, y=Count)) + 
+  geom_bar(stat="identity", show.legend=FALSE, fill="black", width = 0.675) + 
+  scale_colour_fivethirtyeight() + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + 
+  ggtitle("Act 3: Dark", subtitle = "TA13OO") +
+  xlab("Sentiment") +
+  ylab("Sentiment Counts") +
+  coord_cartesian(ylim=c(0,200))
+dg
+```
+
+```{r}
+ggsave(filename="lg.png", plot=lg)
+ggsave(filename="gg.png", plot=gg)
+ggsave(filename="dg.png", plot=dg)
+```
+
+```{r}
+colSums(light[,2:11])
+colSums(grey[,2:11])
+colSums(dark[,2:11])
+```
+
+```{r}
+summarysent <- rbind(colSums(light[,2:11]), colSums(grey[,2:11]), colSums(dark[,2:11]))
+summarysent
+```
+
+```{r}
+write.csv(summarysent, file = "summary.csv")
+```
+
+
+
+
